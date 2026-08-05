@@ -1,0 +1,17 @@
+{
+  "name": "game-signup-email-verification",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/signup_route.ts",
+    "demo": "tsx scripts/send_verification.ts",
+    "test": "tsx --test test/verification_mail.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
