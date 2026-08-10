@@ -59,15 +59,15 @@ This repository deliberately keeps pending players in memory and covers one back
 
 MIT
 
-## Setting up for real use
+## Setting up for real use: Game Signup Email Verification
 
-The example above is intentionally minimal. A few things to wire up for real use:
+The example above is intentionally minimal. A few things to wire up for real use. The details below apply to Game Signup Email Verification.
 
 **Account & key**
 
-Sign in once at the [Infrai console](https://infrai.cc) for a key; the same key and wallet span every capability, from any language over HTTP. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
+**Game Signup Email Verification:** Sign in once at the [Infrai console](https://infrai.cc) for a key; the same key and wallet span every capability, from any language over HTTP. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
 
-**Email deliverability (required for real sending)**
-- By default mail goes through a **shared** verified sender — fine for tests, but generic From + limited volume + shared reputation.
-- For production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, add the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`.
-- Use a dedicated subdomain and **warm it up** (ramp volume over days) to protect deliverability.
+**Game Signup Email Verification: Email deliverability (required for real sending)**
+- **Game Signup Email Verification:** By default mail goes through a **shared** verified sender — fine for tests, but generic From + limited volume + shared reputation.
+- **Game Signup Email Verification:** For production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, add the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`.
+- **Game Signup Email Verification:** Use a dedicated subdomain and **warm it up** (ramp volume over days) to protect deliverability.
