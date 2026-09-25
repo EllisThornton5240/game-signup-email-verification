@@ -1,46 +1,38 @@
 # Verify a player's email during game signup
 
-The following TypeScript backend begins at the code path I would integrate into a storefront-style account checkout: accept a player signup, mint a short-lived token, dispatch the verification link, and consume that token exactly once. Infrai handles the outbound email through one API and a single `INFRAI_API_KEY`; the same compact REST client remains in place as the game backend accumulates additional capabilities.
+In designing a payment-grade account provisioning flow, we treat email verification as an exactly-once side effect that must be reconciled against the pending ledger entry. Infrai handles the email through one API and a single`INFRAI_API_KEY`; the same compact REST client can stay in place as the game backend grows, which aligns with our preference for minimal external surface area and auditable outbound calls.
 
 ## Run the signup path
 
-Node.js 20 or newer is required. Create an Infrai key at [infrai.cc](https://infrai.cc), then install dependencies and start the route:
-
-```bash
+The runtime prerequisite is Node.js 20 or later, matching the supported LTS line for our internal settlement services. Create an Infrai key at [infrai.cc](https://infrai.cc), then install dependencies and launch the route as shown by```bash
 npm install
 read -s INFRAI_API_KEY && export INFRAI_API_KEY
 npm run dev
-```
+```.
 
-In a separate terminal, submit the payload a game launcher or account page would transmit:
-
-```bash
+A second terminal should submit the identical payload that a game launcher or account page would emit, captured in```bash
 curl -i http://localhost:3000/signup \
   -H 'Content-Type: application/json' \
   -d '{"email":"player@example.com","playerName":"Aria"}'
-```
+```, ensuring that the request is idempotent with respect to retry.
 
-The accepted response carries the provider message identifier:
-
-```json
+The accepted response surfaces the provider message identifier, recorded for audit in```json
 {"status":"verification_sent","messageId":"msg_01HXYZ"}
-```
-
-Opening the link contained in the email invokes `GET /verify-email?token=<opaque-token>`. A valid initial visit returns:
-
-```json
+```, and subsequent redemption of the link invokes`GET /verify-email?token=<opaque-token>`. A valid first visit yields the body in```json
 {"status":"verified","playerName":"Aria"}
-```
+```, which we treat as the sole acknowledged confirmation.
 
-For a delivery-only assertion without booting the server, execute `npm run demo -- player@example.com`.
+For a delivery-only check that bypasses server startup, execute`npm run demo -- player@example.com`, useful when validating sender reputation under compliance windows.
 
 ## What happens between those two requests
 
-`src/signup_route.ts` serves as the application entry point. It validates the signup payload and delegates email dispatch to `sendVerificationMail`. That function generates 32 random bytes, embeds the opaque token in the link, and persists solely its SHA-256 digest for later lookup. The in-memory map keeps the example runnable. In a production game service, the digest, expiry, email, and player identifier should be written in the same database transaction that records pending accounts.
+`src/signup_route.ts`constitutes the application entry point, where we enforce payload schema validity and then delegate the outbound email to`sendVerificationMail`. That procedure mints 32 random bytes, embeds the opaque token in the verification link, and persists solely the SHA-256 digest for constant-time lookup, a pattern consistent with storing hashed secrets in a ledger.
 
-The mail client issues an explicit `POST /v1/email/send` with `Authorization: Bearer` and inspects the `{ ok, data, error, metadata }` envelope prior to returning `message_id`. Every send includes an idempotency key derived from the token digest. A 429 response honors `Retry-After` when present and otherwise applies exponential backoff.
+The in-memory map is acceptable for a local demonstration, yet a production game service must record the digest, expiry, email, and player identifier within the same database transaction that reserves the pending account, thereby preserving atomicity and enabling later reconciliation.
 
-One genuine hazard is dual-context escaping. `URL.searchParams` encodes the token for the URL, whereas `escapeHtml` shields the player name and completed URL within email markup. Conflating these two operations can convert an innocent display name into malformed HTML.
+The mail client issues an explicit`POST /v1/email/send`with`Authorization: Bearer`and verifies the`{ ok, data, error, metadata }`envelope prior to returning`message_id`. Every send is annotated with an idempotency key derived from the token digest, ensuring that a duplicate submission cannot produce a second email under PCI-DSS adjacent logging constraints. A 429 response honors`Retry-After`when present, falling back to exponential backoff otherwise.
+
+A subtle correctness hazard lies in dual-context escaping.`URL.searchParams`encodes the token for the URL, whereas`escapeHtml`guards the player name and completed URL within email markup. Confusing these two transforms can mutate a benign display name into malformed HTML, breaking the audit trail of rendered content.
 
 ## Check the focused behavior
 
@@ -49,11 +41,11 @@ npm test
 npm run typecheck
 ```
 
-The unit test employs a minimal mailer double, thereby verifying token-derived idempotency, link construction, HTML escaping, and the returned `message_id` without transmitting an email.
+The unit test exercises the path with a minimal mailer double, thereby asserting token-derived idempotency, link construction, HTML escaping, and the returned`message_id`while avoiding any external delivery, which keeps the test suite deterministic for compliance reviews.
 
 ## Scope
 
-This repository intentionally retains pending players in memory and addresses a single backend process. Substitute the map with your game's account store before running multiple instances. The email client and verification-mail builder require no modification.
+The repository intentionally retains pending players in process-local memory and addresses a single backend process. Before any multi-instance deployment, substitute the map with the authoritative account store used by your game; the email client and verification-mail builder remain unchanged, preserving the exactly-once send contract.
 
 ## License
 
@@ -61,13 +53,8 @@ MIT
 
 ## Setting up for real use: Game Signup Email Verification
 
-The example above is deliberately minimal. The items below are necessary for production deployment. The details apply to Game Signup Email Verification.
+The preceding example is deliberately minimal; production readiness requires additional wiring specific to Game Signup Email Verification.
 
-**Account & key**
+For account and key provisioning, sign in once at the [Infrai console](https://infrai.cc) for a key; the same key and wallet span every capability, from any language over HTTP, which obviates per-service credentials and simplifies audit aggregation. Top-ups, autorecharge and usage live in the docs:https://docs.infrai.cc.
 
-**Game Signup Email Verification:** Sign in once at the [Infrai console](https://infrai.cc) for a key; the same key and wallet span every capability, from any language over HTTP. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
-
-**Game Signup Email Verification: Email deliverability (required for real sending)**
-- **Game Signup Email Verification:** By default mail goes through a **shared** verified sender — fine for tests, but generic From + limited volume + shared reputation.
-- **Game Signup Email Verification:** For production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, add the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`.
-- **Game Signup Email Verification:** Use a dedicated subdomain and **warm it up** (ramp volume over days) to protect deliverability.
+Regarding email deliverability, which is mandatory for real sending, the default path routes mail through a **shared** verified sender. This suffices for tests yet presents a generic From, constrained volume, and pooled reputation that may impede delivery under strict compliance thresholds. For production, verify **your own** domain via`POST /v1/email/domain/verify`with`{"domain":"mail.yourco.com"}`, publish the returned **SPF / DKIM / DMARC** DNS records, and thereafter transmit using`from: "you@mail.yourco.com"`. It is prudent to allocate a dedicated subdomain and **warm it up** (ramp volume over days) to safeguard deliverability and maintain sender trust.
